@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bank DApp with Infura</title>
+    <!-- นำเข้า ethers.js -->
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            width: 400px;
+            text-align: center;
+        }
+        h2 { color: #333; margin-bottom: 5px; }
+        .student-info {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-bottom: 15px;
+            transition: background 0.3s;
+        }
+        .btn:hover { background-color: #45a049; }
+        .section {
+            margin-top: 15px;
+            text-align: left;
+            background: #fafafa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+        input {
+            width: calc(100% - 20px);
+            padding: 8px;
+            margin-top: 5px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .balance-box {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Bank DApp (Infura)</h2>
+        <div class="student-info">
+            รหัสนักศึกษา: <b>66036668</b><br>
+            ชื่อ-สกุล: <b>อรรธพงษ์ พินนา</b>
+        </div>
+
+        <button class="btn" onclick="connectWallet()">Connect MetaMask</button>
+        <p id="walletAddress" style="font-size: 12px; color: #555; word-break: break-all;">Status: Not Connected (Using Infura)</p>
+
+        <!-- เช็คยอดเงิน -->
+        <div class="section">
+            <button class="btn" style="background-color: #3498db; margin-bottom: 5px;" onclick="checkBalance()">Check Balance</button>
+            <div class="balance-box" id="balanceDisplay">ยอดเงินคงเหลือ: - ETH</div>
+        </div>
+
+        <!-- ฝากเงิน -->
+        <div class="section">
+            <label><b>Deposit (ETH):</b></label>
+            <input type="number" id="depositAmount" placeholder="0.01">
+            <button class="btn" style="background-color: #e67e22;" onclick="deposit()">Deposit</button>
+        </div>
+
+        <!-- ถอนเงิน -->
+        <div class="section">
+            <label><b>Withdraw (ETH):</b></label>
+            <input type="number" id="withdrawAmount" placeholder="0.01">
+            <button class="btn" style="background-color: #e74c3c;" onclick="withdraw()">Withdraw</button>
+        </div>
+    </div>
+
+    <script>
+        // ใช้ Infura RPC URL สำหรับ Sepolia Testnet เป็นโหนดกลางในการอ่านข้อมูล
+        const INFURA_URL = "https://sepolia.infura.io/v3/YOUR_INFURA_PROJECT_ID"; 
+        const CONTRACT_ADDRESS = "0xaf903b1945727c3a96D39DB95d350F78C71B8688";
+        const CONTRACT_ABI = [
+            "function deposit() public payable",
+            "function withdraw(uint amount) public",
+            "function checkBlance() public view returns (uint balance)"
+        ];
+
+        let provider;
+        let signer;
+        let contract;
+
+        // เริ่มต้นระบบด้วย Infura เพื่อให้สามารถอ่านข้อมูลเบื้องต้นได้ทันที
+        async function init() {
+            try {
+                provider = new ethers.providers.JsonRpcProvider(INFURA_URL);
+                contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+                console.log("Connected via Infura successfully!");
+            } catch (error) {
+                console.error("Infura initialization error:", error);
+            }
+        }
+
+        // ฟังก์ชันเชื่อมต่อ MetaMask (สำหรับทำธุรกรรม ฝาก/ถอน)
+        async function connectWallet() {
+            if (window.ethereum) {
+                try {
+                    await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    const web3Provider = new ethers.providers.Web3Provider(window.ethereum);
+                    signer = web3Provider.getSigner();
+                    contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+                    
+                    const address = await signer.getAddress();
+                    document.getElementById("walletAddress").innerText = "Connected: " + address;
+                    alert("เชื่อมต่อ MetaMask สำเร็จ!");
+                } catch (error) {
+                    console.error(error);
+                    alert("ผู้ใช้ปฏิเสธการเชื่อมต่อกระเป๋า");
+                }
+            } else {
+                alert("กรุณาติดตั้งส่วนขยาย MetaMask!");
+            }
+        }
+
+        // ฟังก์ชันตรวจสอบยอดเงิน (รองรับทั้ง Infura และ MetaMask)
+        async function checkBalance() {
+            try {
+                // ถ้าเชื่อมต่อกระเป๋าแล้ว ให้เช็คจากบัญชีที่เชื่อมต่อ
+                let targetContract = contract;
+                if (signer) {
+                    const userAddress = await signer.getAddress();
+                    // เรียกผ่าน signer เพื่อดูยอดของตัวเอง
+                    const balanceWei = await contract.connect(signer).checkBlance();
+                    const balanceEth = ethers.utils.formatEther(balanceWei);
+                    document.getElementById("balanceDisplay").innerText = "ยอดเงินคงเหลือ: " + balanceEth + " ETH";
+                } else {
+                    alert("กรุณา Connect MetaMask ก่อนตรวจสอบยอดเงินส่วนตัวของคุณ");
+                }
+            } catch (error) {
+                console.error(error);
+                alert("เกิดข้อผิดพลาดในการดึงยอดเงิน");
+            }
+        }
+
+        // ฟังก์ชันฝากเงิน
+        async function deposit() {
+            if (!signer) {
+                alert("กรุณา Connect MetaMask ก่อนฝากเงิน!");
+                return;
+            }
+            try {
+                const amountEth = document.getElementById("depositAmount").value;
+                if (!amountEth || amountEth <= 0) {
+                    alert("กรุณากรอกจำนวนเงินให้ถูกต้อง");
+                    return;
+                }
+                const amountWei = ethers.utils.parseEther(amountEth);
+                const tx = await contract.deposit({ value: amountWei });
+                alert("กำลังส่งธุรกรรมฝากเงิน... กรุณารอสักครู่");
+                await tx.wait();
+                alert("ฝากเงินสำเร็จ!");
+                checkBalance();
+            } catch (error) {
+                console.error(error);
+                alert("การฝากเงินล้มเหลว: " + (error.data?.message || error.message));
+            }
+        }
+
+        // ฟังก์ชันถอนเงิน
+        async function withdraw() {
+            if (!signer) {
+                alert("กรุณา Connect MetaMask ก่อนถอนเงิน!");
+                return;
+            }
+            try {
+                const amountEth = document.getElementById("withdrawAmount").value;
+                if (!amountEth || amountEth <= 0) {
+                    alert("กรุณากรอกจำนวนเงินให้ถูกต้อง");
+                    return;
+                }
+                const amountWei = ethers.utils.parseEther(amountEth);
+                const tx = await contract.withdraw(amountWei);
+                alert("กำลังส่งธุรกรรมถอนเงิน... กรุณารอสักครู่");
+                await tx.wait();
+                alert("ถอนเงินสำเร็จ!");
+                checkBalance();
+            } catch (error) {
+                console.error(error);
+                alert("การถอนเงินล้มเหลว: " + (error.data?.message || error.message));
+            }
+        }
+
+        window.onload = function() {
+            init();
+        };
+    </script>
+</body>
+</html>
